@@ -4,12 +4,14 @@ import menuModel from "../models/menu-model.js";
 import restaurantModel from "../models/restaurant-model.js";
 import reviewModel from "../models/review-model.js";
 
-//AddNew restaurant
+//@desc AddNew restaurant
+//route POST  /v1/api/zomato/addRestaurant
 
 export const createRestaurant = async (req, res) => {
   const { name, cuisine, address, city, rating } = req.body;
 
   try {
+    //checking if userInput is empty
     if (!name || !cuisine || !address || !city || !rating) {
       return res.status(400).json({
         message: ErrorMessages.MISSING_FIELD,
@@ -39,14 +41,15 @@ export const createRestaurant = async (req, res) => {
     res.status(200).json({
       message: SuccessMessage.RESTAURANT_ADDED,
       success: true,
-      data: { newRestaurant },
+      data: newRestaurant,
     });
   } catch (error) {
     throw error;
   }
 };
 
-//read restuarant by name
+//@desc get restaurant by name
+//route GET  /v1/api/zomato/restaurant/:restaurantName
 export const getRestaurantByName = async (req, res) => {
   const { restaurantName } = req.params;
   try {
@@ -60,7 +63,11 @@ export const getRestaurantByName = async (req, res) => {
 
     const findrestaurant = await restaurantModel
       .find({ name: restaurantName })
-      .populate("cuisines");
+      .populate({
+        path: "cuisines menus review",
+        select: "-restaurantId -__v -updatedAt",
+      })
+      .select("-__v ");
 
     //checking if restaurant found in database
     if (!findrestaurant) {
@@ -70,7 +77,7 @@ export const getRestaurantByName = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+   return res.status(200).json({
       message: SuccessMessage.DATA_FETCH_SUCCESS,
       success: true,
       data: findrestaurant,
@@ -80,22 +87,30 @@ export const getRestaurantByName = async (req, res) => {
   }
 };
 
-// reading all restaurant
+//@desc GET all restaurant
+//route POST  /v1/api/zomato/all-restaurant
 
 export const getAllRestaurant = async (req, res) => {
   try {
-    const allRestaurant = await restaurantModel.find().populate("cuisines");
-    res.status(200).json({
+    const allRestaurant = await restaurantModel
+      .find()
+      .populate({
+        path: "cuisines menus review",
+        select: "-restaurantId -__v -updatedAt",
+      })
+      .select("-__v ");
+   return res.status(200).json({
       message: SuccessMessage.DATA_FETCH_SUCCESS,
       success: true,
       restaurants: allRestaurant,
     });
   } catch (error) {
-    console.log(error);
+    throw error;
   }
 };
 
-// read restaurant by cuisine type
+//@desc get restaurant by cuisineName
+//route GET  /v1/api/zomato/cuisine/:cuisineName
 
 export const getRestaurantsByCuisine = async (req, res) => {
   const { cuisineName } = req.params;
@@ -108,28 +123,41 @@ export const getRestaurantsByCuisine = async (req, res) => {
       });
     }
 
-    const findCuisine = await cuisineModel.find({ cuisineName: cuisineName });
+    const findCuisine = await cuisineModel.find({
+      cuisineName: cuisineName,
+    });
+   
+    const restaurantIds = findCuisine.map((cuisine) => cuisine.restaurantId);
 
-    const restro = await restaurantModel.find();
+    const findRestro = await restaurantModel
+      .find({
+        _id: { $in: restaurantIds }, // Filter by restaurantIds from findCuisine
+      })
+      .populate({
+        path: "cuisines menus review",
+        select: "-restaurantId -__v -updatedAt",
+      })
+      .select("-__v ");
 
-    if (!findCuisine.length) {
+    if (!findRestro.length) {
       return res.status(404).json({
         message: ErrorMessages.RESTAURANT_NOT_FOUND,
         success: false,
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: SuccessMessage.DATA_FETCH_SUCCESS,
       success: true,
-      data: findCuisine,
+      data: findRestro,
     });
   } catch (error) {
     throw error;
   }
 };
 
-// update restaurant
+//@desc update restaurant by restaurantId
+//route POST  /v1/api/zomato/restaurant/:restaurantId
 
 export const updateRestaurant = async (req, res) => {
   const { restaurantId } = req.params;
@@ -154,7 +182,11 @@ export const updateRestaurant = async (req, res) => {
       {
         new: true,
       }
-    );
+    ).populate({
+      path: "cuisines menus review",
+      select: "-restaurantId -__v -updatedAt",
+    })
+    .select("-__v ");;
 
     if (!findRestaurantandUpate) {
       return res.status(404).json({
@@ -173,7 +205,8 @@ export const updateRestaurant = async (req, res) => {
   }
 };
 
-// deleting a restaurant
+//@desc delete restaurant by Id
+//route DELETE  /v1/api/zomato/restaurant/:restaurantId
 
 export const deleteRestaurant = async (req, res) => {
   const { restaurantId } = req.params;
@@ -194,9 +227,13 @@ export const deleteRestaurant = async (req, res) => {
         success: false,
       });
     }
-    await restaurantModel.findByIdAndDelete({ _id: restaurantId });
-    await cuisineModel.findOneAndDelete({ restaurantId: restaurantId });
-    res.status(200).json({
+
+    await restaurantModel.findByIdAndDelete({ _id: restaurantId });//deleting  restaurant data
+    await cuisineModel.deleteMany({ restaurantId: restaurantId });//deleting cuisines of restaurant
+    await menuModel.deleteMany({restaurantId:restaurantId})//deleting menus of restuarant
+    await reviewModel.deleteMany({restaurantId:restaurantId})//deleting review
+
+   return res.status(200).json({
       message: SuccessMessage.RESRTRO_DELETED,
       success: true,
     });
@@ -205,7 +242,8 @@ export const deleteRestaurant = async (req, res) => {
   }
 };
 
-//search restaurant by location
+//@desc get restaurant by location
+//route GET  /v1/api/zomato/restaurant/search/:location
 
 export const searchRestaurantByLocation = async (req, res) => {
   const { location } = req.params;
@@ -216,7 +254,11 @@ export const searchRestaurantByLocation = async (req, res) => {
         success: false,
       });
     }
-    const findrestaurant = await restaurantModel.findOne({ city: location });
+    const findrestaurant = await restaurantModel.findOne({ city: location }) .populate({
+      path: "cuisines menus review",
+      select: "-restaurantId -__v -updatedAt",
+    })
+    .select("-__v ");
 
     if (!findrestaurant) {
       return res.status(404).json({
@@ -224,7 +266,7 @@ export const searchRestaurantByLocation = async (req, res) => {
         success: false,
       });
     }
-    res.status(200).json({
+      return res.status(200).json({
       message: SuccessMessage.DATA_FETCH_SUCCESS,
       success: true,
       data: findrestaurant,
@@ -234,7 +276,8 @@ export const searchRestaurantByLocation = async (req, res) => {
   }
 };
 
-// filter restaurant by rating
+//@desc filter restaurant by by minRating
+//route GET  /v1/api/zomato/restaurant/rating/:rating
 
 export const filterRestaurantByRating = async (req, res) => {
   const { minRating } = req.params;
@@ -247,7 +290,11 @@ export const filterRestaurantByRating = async (req, res) => {
     }
     const findrestaurant = await restaurantModel.find({
       rating: { $gte: minRating },
-    });
+    }) .populate({
+      path: "cuisines menus review",
+      select: "-restaurantId -__v -updatedAt",
+    })
+    .select("-__v ");
     if (!findrestaurant) {
       return res.status(404).json({
         message: ErrorMessages.RESTAURANT_NOT_FOUND,
@@ -255,7 +302,7 @@ export const filterRestaurantByRating = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+       return res.status(200).json({
       message: SuccessMessage.DATA_FETCH_SUCCESS,
       success: true,
       data: findrestaurant,
@@ -265,7 +312,8 @@ export const filterRestaurantByRating = async (req, res) => {
   }
 };
 
-//adding dish to menu
+//@desc add menus to restaurant
+//route POST  /v1/api/zomato/restaurant/:restaurantId/menu
 
 export const addDishToMenu = async (req, res) => {
   const { name, price, discription, isVeg } = req.body;
@@ -294,7 +342,8 @@ export const addDishToMenu = async (req, res) => {
     throw error;
   }
 };
-
+//@desc delete dish by name
+//route DELETE  /v1/api/zomato/restaurant/:restaurantId/menu/:dishName
 export const removeDishByName = async (req, res) => {
   const { restaurantId, dishName } = req.params;
 
@@ -307,30 +356,26 @@ export const removeDishByName = async (req, res) => {
       });
     }
     //checking if dish present in menus list
-    const checkDish = await menuModel.findOne({ name: dishName });
+    const checkDish = await menuModel.findOne(
+      { restaurantId: restaurantId },
+      { name: dishName }
+    );
     if (!checkDish) {
       return res.status(400).json({
         message: ErrorMessages.DISH_NOT_FOUND,
         success: false,
       });
     }
-    // // checking in restaurant if dish is present or not
-    // const checkInRestro = await restaurantModel.findById({ _id: restaurantId });
 
-    // if (!filtering.length) {
-    //   return res.status(400).json({
-    //     message: ErrorMessages.DISH_NOT_IN_RESTRO,
-    //     success: false,
-    //   });
-    // }
-    await menuModel.findOneAndDelete({ name: dishName });
-    const findDish = await menuModel.find();
+    await menuModel.findOneAndDelete({ _id: checkDish._id });
+
+    // const findDish = await menuModel.find();
 
     await restaurantModel.findByIdAndUpdate(
       {
         _id: restaurantId,
       },
-      { menus: findDish }
+      { $pull: { menus: checkDish._id } }
     );
     res.status(200).json({
       message: SuccessMessage.MENU_DELETED,
@@ -340,7 +385,8 @@ export const removeDishByName = async (req, res) => {
     throw error;
   }
 };
-
+//@desc add to review restaurant
+//route POST  /v1/api/zomato/restaurant/:restaurantId/review
 export const addReviewByUser = async (req, res) => {
   const { restaurantId } = req.params;
   const { userId, rating, reviewText } = req.body;
@@ -366,7 +412,8 @@ export const addReviewByUser = async (req, res) => {
     throw error;
   }
 };
-
+//@desc get restaurant by name
+//route GET  /v1/api/zomato/restaurant/:restaurantId/reviews
 export const getReviewOfRestaurant = async (req, res) => {
   const { restaurantId } = req.params;
   try {

@@ -6,24 +6,25 @@ const RestaurantSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    cuisines: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "cuisine",
-      },
-    ],
+
     address: {
       type: String,
       required: true,
     },
     city: {
       type: String,
-      required:true
+      required: true,
     },
     rating: {
       type: Number,
       default: 0,
     },
+    cuisines: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "cuisine",
+      },
+    ],
     menus: [
       {
         type: mongoose.Schema.Types.ObjectId,
